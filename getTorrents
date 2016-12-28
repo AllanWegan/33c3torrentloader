@@ -1,0 +1,99 @@
+#! /usr/bin/env python3
+
+import os, time, re
+from itertools import chain
+from urllib.request import urlopen
+
+supportedLangs = ('deu', 'eng') # Enter all acceptable audio track languages.
+
+def getNames():
+  """
+  Gets media file names from server.
+  """
+  with urlopen('http://cdn.media.ccc.de/congress/2016/h264-hd/') as resp:
+    for line in resp:
+      line = line.decode('utf-8')
+      match = re.search(r'<a href="(.+\.mp4)">', line)
+      if match is not None:
+        yield match.group(1)
+
+def splitName(s):
+  """
+  Splits the media file name into prefix, suffix and a sequence of languages.
+  """
+  match = re.search(r'(^[^-]{4}-[^-]{4})-([a-z]{3}(?:-[a-z]{3})*)-(.*)$', s)
+  if match is None:
+    return None, (), None
+  return match.group(1), tuple(match.group(2).split('-')), match.group(3)
+
+# Get file names, split them and collect supported languages:
+files = []
+for name in getNames():
+  prefix, langs, suffix = splitName(name)
+  langsF = tuple(lang for lang in langs if lang in supportedLangs)
+  if len(langsF) == 0:
+    print('No supported languages: {0}'.format(name))
+    continue
+  files.append((prefix, suffix, langs, langsF))
+
+# Collect all versions supporting at least one of our languages weighted by
+# count of the languages in each version. Also try to detect the primary
+# language of each recording:
+mediaLangs = {}
+mediaPrimaryLangs = {}
+for prefix, suffix, langs, langsF in files:
+  print(prefix, suffix, langs, langsF)
+  langsRecord = mediaLangs.setdefault(prefix, {})
+  for lang in langsF:
+    l = langsRecord.setdefault(lang, [])
+    l.append((len(langs), langs, suffix))
+  primarySupported = len(langsF) != 1 and langsF[0] in supportedLangs
+  if primarySupported:
+    mediaPrimaryLangs[prefix] = langsF[0]
+
+# For each recording select the best supported version.
+# Try to select the version containing the primary language and as few audio
+# tracks as possible:
+torrentNames = []  
+for prefix, langsRecord in mediaLangs.items():
+  langP = mediaPrimaryLangs.get(prefix, None)
+  print()
+  print('selecting version for {0}:'.format(prefix))
+  versions = set(version[1] for version in chain(*langsRecord.values()))
+  print('Supported versions: {0}'.format(list(versions)))
+  if langP is None:
+    if all(len(version[1]) == 1 for version in chain(*langsRecord.values())):
+      msg = 'Only single-language versions supported!'
+    else:
+      msg = 'Only synchronized versions supported!'
+    print(msg.format(prefix))
+    versions = (version for version in chain(*langsRecord.values()))
+    _, langs, suffix = sorted(versions)[0]
+  else:
+    msg = 'Original version supported: {1}.'
+    print(msg.format(prefix, langP))
+    _, langs, suffix = sorted(version for version in langsRecord[langP])[0]
+  print('Selected: {0}, {1}'.format(langs, suffix))
+  torrentName = '{0}-{1}-{2}.torrent'.format(prefix, '-'.join(langs), suffix)
+  torrentNames.append(torrentName)
+torrentNames = sorted(torrentNames)
+print()
+
+# Create folder for torrent files:
+tsInfo = time.gmtime(time.time())
+timestampStr = time.strftime('%Y-%m-%d %H-%M-%S', tsInfo)
+baseDir = os.path.dirname(__file__)
+dirName = 'torrents - ' + timestampStr
+dirPath = os.path.join(baseDir, dirName)
+if not os.path.isdir(dirPath):
+  os.mkdir(dirPath)
+
+# Download selected torrent files:
+for torrentName in torrentNames:
+  torrentUrl = 'http://cdn.media.ccc.de/congress/2016/h264-hd/' + torrentName
+  torrentPath = os.path.join(dirPath, torrentName)
+  print(torrentUrl)
+  with urlopen(torrentUrl) as response:
+    data = response.read()
+    with open(torrentPath, 'bw') as torrentFile:
+      torrentFile.write(data)
