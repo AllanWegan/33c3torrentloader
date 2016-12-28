@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-import os, time, re
+import os, re
 from itertools import chain
 from urllib.request import urlopen
 
@@ -80,11 +80,7 @@ torrentNames = sorted(torrentNames)
 print()
 
 # Create folder for torrent files:
-tsInfo = time.gmtime(time.time())
-timestampStr = time.strftime('%Y-%m-%d %H-%M-%S', tsInfo)
-baseDir = os.path.dirname(__file__)
-dirName = 'torrents - ' + timestampStr
-dirPath = os.path.join(baseDir, dirName)
+dirPath = os.path.join(os.path.dirname(__file__), 'torrents')
 if not os.path.isdir(dirPath):
   os.mkdir(dirPath)
 
@@ -95,5 +91,11 @@ for torrentName in torrentNames:
   print(torrentUrl)
   with urlopen(torrentUrl) as response:
     data = response.read()
+    if os.path.isfile(torrentPath):
+      with open(torrentPath, 'br') as oldFile:
+        oldData = oldFile.read()
+        if oldData == data:
+          continue
+        print('Updating old file.')
     with open(torrentPath, 'bw') as torrentFile:
       torrentFile.write(data)
