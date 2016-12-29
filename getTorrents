@@ -3,6 +3,7 @@
 import os, re
 from itertools import chain
 from urllib.request import urlopen
+from urllib.error import HTTPError, URLError
 
 from bencodingDecoder import parseBencodingBytes
 
@@ -91,18 +92,24 @@ for torrentName in torrentNames:
   torrentUrl = 'http://cdn.media.ccc.de/congress/2016/h264-hd/' + torrentName
   torrentPath = os.path.join(dirPath, torrentName)
   print(torrentUrl)
-  with urlopen(torrentUrl) as response:
-    data = response.read()
-    if os.path.isfile(torrentPath):
-      sha256 = list(parseBencodingBytes(data))[0][b'info'][b'sha256']
-      with open(torrentPath, 'br') as oldFile:
-        oldData = oldFile.read()
-        oldSha256 = list(parseBencodingBytes(oldData))[0][b'info'][b'sha256']
-        if sha256 == oldSha256:
-          continue
-        msg = 'Old file SHA256: {0}, new SHA256: {1} - updating...'
-        print(msg.format(oldSha256, sha256))
-    else:
-      print('Writing new file...')
-    with open(torrentPath, 'bw') as torrentFile:
-      torrentFile.write(data)
+  try:
+    with urlopen(torrentUrl) as response:
+      data = response.read()
+  except (HTTPError, URLError) as ex:
+    msg = 'Error while downloading: {0}'
+    print(msg.format(ex))
+    continue
+
+  if os.path.isfile(torrentPath):
+    sha256 = list(parseBencodingBytes(data))[0][b'info'][b'sha256']
+    with open(torrentPath, 'br') as oldFile:
+      oldData = oldFile.read()
+      oldSha256 = list(parseBencodingBytes(oldData))[0][b'info'][b'sha256']
+      if sha256 == oldSha256:
+        continue
+      msg = 'Old file SHA256: {0}, new SHA256: {1} - updating...'
+      print(msg.format(oldSha256, sha256))
+  else:
+    print('Writing new file...')
+  with open(torrentPath, 'bw') as torrentFile:
+    torrentFile.write(data)
