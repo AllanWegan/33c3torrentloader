@@ -4,7 +4,9 @@ import os, re
 from itertools import chain
 from urllib.request import urlopen
 
-supportedLangs = ('deu', 'eng') # Enter all acceptable audio track languages.
+from bencodingDecoder import parseBencodingBytes
+
+supportedLangs = ('deu', 'eng') # Acceptable audio track languages.
 
 def getNames():
   """
@@ -92,10 +94,15 @@ for torrentName in torrentNames:
   with urlopen(torrentUrl) as response:
     data = response.read()
     if os.path.isfile(torrentPath):
+      sha256 = list(parseBencodingBytes(data))[0][b'info'][b'sha256']
       with open(torrentPath, 'br') as oldFile:
         oldData = oldFile.read()
-        if oldData == data:
+        oldSha256 = list(parseBencodingBytes(oldData))[0][b'info'][b'sha256']
+        if sha256 == oldSha256:
           continue
-        print('Updating old file.')
+        msg = 'Old file SHA256: {0}, new SHA256: {1} - updating...'
+        print(msg.format(oldSha256, sha256))
+    else:
+      print('Writing new file...')
     with open(torrentPath, 'bw') as torrentFile:
       torrentFile.write(data)
